@@ -650,39 +650,49 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
     const lines = state.current.map(function (s) { return s.date + ': ' + s.text; }).join('\n');
     const userMsg = (who ? 'Gratitude slips written by ' + who + ':\n' : 'Gratitude slips:\n') + lines;
     let err = null, text = '';
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: CLAUDE_MODEL,
-          max_tokens: 150,
-          thinking: { type: 'disabled' },
-          system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: userMsg }]
-        })
-      });
-      let data = null;
-      try { data = await res.json(); } catch (e) { data = null; }
-      if (!res.ok) {
-        const m = data && data.error && data.error.message ? data.error.message : 'HTTP ' + res.status;
-        err = res.status === 401 ? 'Your API key was rejected. Check it in settings.' : 'Claude could not answer: ' + m;
-      } else {
-        const blocks = data && Array.isArray(data.content) ? data.content : [];
-        text = stripQuotes(blocks.filter(function (b) { return b && b.type === 'text' && typeof b.text === 'string'; })
-          .map(function (b) { return b.text; }).join(' ').trim());
-        if (!text) {
-          console.warn('Empty reflection', data && data.stop_reason, blocks.map(function (b) { return b && b.type; }));
-          err = 'Claude returned an empty reply.';
+    // Thinking settings to try in order. Some models reject 'disabled' and ask for
+    // 'between_tools'; others reject that, so the last attempt omits the field.
+    const thinkingModes = [{ type: 'disabled' }, { type: 'between_tools' }, null];
+    for (let i = 0; i < thinkingModes.length; i++) {
+      const payload = {
+        model: CLAUDE_MODEL,
+        max_tokens: 150,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMsg }]
+      };
+      if (thinkingModes[i]) payload.thinking = thinkingModes[i];
+      err = null;
+      let retryThinking = false;
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify(payload)
+        });
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = null; }
+        if (!res.ok) {
+          const m = data && data.error && data.error.message ? data.error.message : 'HTTP ' + res.status;
+          retryThinking = res.status === 400 && /thinking/i.test(m);
+          err = res.status === 401 ? 'Your API key was rejected. Check it in settings.' : 'Claude could not answer: ' + m;
+        } else {
+          const blocks = data && Array.isArray(data.content) ? data.content : [];
+          text = stripQuotes(blocks.filter(function (b) { return b && b.type === 'text' && typeof b.text === 'string'; })
+            .map(function (b) { return b.text; }).join(' ').trim());
+          if (!text) {
+            console.warn('Empty reflection', data && data.stop_reason, blocks.map(function (b) { return b && b.type; }));
+            err = 'Claude returned an empty reply.';
+          }
         }
+      } catch (e) {
+        err = 'Could not reach Claude. Check your connection and try again.';
       }
-    } catch (e) {
-      err = 'Could not reach Claude. Check your connection and try again.';
+      if (!retryThinking) break;
     }
     busy = false;
     if (err) {
