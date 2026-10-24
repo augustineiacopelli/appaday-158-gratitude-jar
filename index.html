@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="manifest" href="https://augustineiacopelli.github.io/appaday/manifests/158.webmanifest">
 <script src="https://augustineiacopelli.github.io/appaday/save.js" defer></script>
+<script src="https://augustineiacopelli.github.io/appaday/keys.js" data-app="158" data-legacy-key="appaday-158-apikey" data-accent="#5B4BC4" defer></script>
 <title>Gratitude Jar | AppADay 158</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -220,12 +221,8 @@ footer a{display:inline-flex;align-items:center;min-height:44px;padding:0 .5rem}
 <div class="modal" id="settingsModal" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <div class="box">
     <div class="boxhead"><h2 id="setTitle">Settings</h2><button type="button" class="iconbtn" data-close aria-label="Close">&times;</button></div>
-    <label for="apiKey">Anthropic API key</label>
-    <div class="keyrow">
-      <input id="apiKey" class="field" type="password" spellcheck="false" autocapitalize="off" placeholder="sk-ant-...">
-      <button type="button" class="btn ghost" id="keyToggle" aria-pressed="false">Show</button>
-    </div>
-    <p class="note">Used only for the reflection when a jar fills. Stored in this browser and sent only to the Anthropic API.</p>
+    <div id="keyMount"></div>
+    <p class="note">Used only for the reflection when a jar fills.</p>
     <label for="sessionName" style="margin-top:.8rem">Your name (optional)</label>
     <input id="sessionName" class="field" type="text" maxlength="40" placeholder="Shown to Claude with your slips">
     <button type="button" class="btn" id="saveSettings">Save</button>
@@ -260,7 +257,6 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
   const CLAUDE_MODEL = await getModel('haiku');
 
   const STORE_KEY = 'appaday-158-gratitude';
-  const KEY_KEY = 'appaday-158-apikey';
   const NAME_KEY = 'appaday-158-session';
   const JAR_SIZE = 7;
   const MAX_LEN = 140;
@@ -450,7 +446,7 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
       state.pending = true;
       state.lastError = null;
       save();
-      requestReflection();
+      requestReflection(true);
     }
   }
 
@@ -528,7 +524,7 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
       return;
     }
 
-    const hasKey = !!(lsGet(KEY_KEY) || '').trim();
+    const hasKey = !!(window.AppKeys && window.AppKeys.has());
     if (hasKey) {
       const p = document.createElement('p');
       p.className = 'err';
@@ -536,7 +532,7 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
       body.appendChild(p);
       const r = document.createElement('button');
       r.type = 'button'; r.className = 'btn'; r.textContent = 'Retry';
-      r.addEventListener('click', function () { state.lastError = null; save(); requestReflection(); });
+      r.addEventListener('click', function () { state.lastError = null; save(); requestReflection(true); });
       body.appendChild(r);
     } else {
       const p = document.createElement('p');
@@ -637,9 +633,9 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
     return s.replace(/^[\s"'\u201c\u201d\u2018\u2019]+/, '').replace(/[\s"'\u201c\u201d\u2018\u2019]+$/, '');
   }
 
-  async function requestReflection() {
+  async function requestReflection(interactive) {
     if (busy || !jarIsWaiting() || state.reflection) return;
-    const key = (lsGet(KEY_KEY) || '').trim();
+    const key = window.AppKeys ? ((interactive || window.AppKeys.has()) ? await window.AppKeys.get() : null) : null;
     if (!key) {
       state.pending = true;
       state.lastError = 'No API key is saved.';
@@ -802,25 +798,15 @@ async function getModel(tier = 'sonnet') { try { const r = await fetch('../confi
 
   // Settings
   function openSettings() {
-    $('apiKey').value = lsGet(KEY_KEY) || '';
-    $('apiKey').type = 'password';
-    $('keyToggle').textContent = 'Show';
-    $('keyToggle').setAttribute('aria-pressed', 'false');
+    if (window.AppKeys) window.AppKeys.mountSettings($('keyMount'));
     $('sessionName').value = lsGet(NAME_KEY) || '';
     $('setToast').textContent = '';
     openModal($('settingsModal'));
   }
   $('gearBtn').addEventListener('click', openSettings);
-  $('keyToggle').addEventListener('click', function () {
-    const showing = $('apiKey').type === 'text';
-    $('apiKey').type = showing ? 'password' : 'text';
-    this.textContent = showing ? 'Show' : 'Hide';
-    this.setAttribute('aria-pressed', showing ? 'false' : 'true');
-  });
+  window.addEventListener('appaday:keychange', function () { render(); });
   $('saveSettings').addEventListener('click', function () {
-    const k = $('apiKey').value.trim();
     const n = $('sessionName').value.trim();
-    if (k) lsSet(KEY_KEY, k); else lsDel(KEY_KEY);
     if (n) lsSet(NAME_KEY, n); else lsDel(NAME_KEY);
     toast($('setToast'), 'Saved.');
     render();
