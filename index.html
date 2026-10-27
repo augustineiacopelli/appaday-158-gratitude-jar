@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="manifest" href="https://augustineiacopelli.github.io/appaday/manifests/158.webmanifest">
 <script src="https://augustineiacopelli.github.io/appaday/save.js" defer></script>
+<script src="https://augustineiacopelli.github.io/appaday/models.js"></script>
 <script src="https://augustineiacopelli.github.io/appaday/keys.js" data-app="158" data-legacy-key="appaday-158-apikey" data-accent="#5B4BC4" defer></script>
 <title>Gratitude Jar | AppADay 158</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -251,8 +252,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px;padding:0 .5rem}
 </div>
 
 <script>
-async function getModel(tier = 'sonnet') { try { const r = await fetch('../config.json'); const c = await r.json(); return c.models[tier]; } catch { return 'claude-sonnet-5-5'; } }
-
+async function getModel(tier) { return window.AppModels ? window.AppModels.get(tier || 'sonnet') : ''; }
 (async function init() {
   const CLAUDE_MODEL = await getModel('haiku');
 
